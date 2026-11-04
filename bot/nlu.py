@@ -1,7 +1,8 @@
 """ルールベースの自然言語理解：意図(intent)の判定と、日付・時限などのスロット抽出。"""
+
+import datetime as dt
 import re
 import unicodedata
-import datetime as dt
 
 WEEKDAY_JA = "月火水木金土日"
 
@@ -10,13 +11,16 @@ TASK_WORDS = r"(レポート|課題|宿題|小テスト|提出物|締切|締め�
 QUESTION = r"(\?|一覧|教えて|確認|見せて|ある？|あるっけ|残って|何がある)"
 
 INTENT_RULES = [
-    ("help",       r"(ヘルプ|使い方|何ができる|なにができる)"),
-    ("settings",   r"(設定|変更|変え|いつも).*(駅|方面|興戸|同志社前|京都|奈良|京橋|木津)"
-                   r"|(駅|方面|興戸|同志社前).*(設定|変更|変え|にして|にする)"),
-    ("go_home",    r"(帰る|帰り|帰ろ|帰宅|かえる|電車|終電|次の便|駅まで)"),
-    ("where",      r"(どこ|場所|行き方|どうやって行|道案内|地図|マップ|行きたい)"),
-    ("timetable",  r"(授業|時間割|何限|限目|コマ|空いて|次は|^次(なに|何|なん))"),
-    ("greet",      r"(こんにちは|こんばんは|おはよう|ありがとう|はじめまして)"),
+    ("help", r"(ヘルプ|使い方|何ができる|なにができる)"),
+    (
+        "settings",
+        r"(設定|変更|変え|いつも).*(駅|方面|興戸|同志社前|京都|奈良|京橋|木津)"
+        r"|(駅|方面|興戸|同志社前).*(設定|変更|変え|にして|にする)",
+    ),
+    ("go_home", r"(帰る|帰り|帰ろ|帰宅|かえる|電車|終電|次の便|駅まで)"),
+    ("where", r"(どこ|場所|行き方|どうやって行|道案内|地図|マップ|行きたい)"),
+    ("timetable", r"(授業|時間割|何限|限目|コマ|空いて|次は|^次(なに|何|なん))"),
+    ("greet", r"(こんにちは|こんばんは|おはよう|ありがとう|はじめまして)"),
 ]
 
 YES = r"^(はい|うん|ok|おk|お願い|おねがい|それで|いいよ|いいです|大丈夫|そう|y)"
@@ -78,6 +82,7 @@ def is_cancel(text):
 
 
 # ---------- 日付 ----------
+
 
 def _roll_month(year, month, day, today):
     """月指定なしの「15日」を、今日以降で最も近い日付にする。"""
@@ -197,7 +202,9 @@ def find_room(text):
 
 def clean_class_name(text):
     """時限や教室を取り除いた残りから、授業名だけを取り出す。"""
-    s = re.sub(r"(を|に|は)?\s*(追加|登録|入れ|変更)(して|する|します|しといて|しておいて|お願い|ください|て)*", " ", text)
+    s = re.sub(
+        r"(を|に|は)?\s*(追加|登録|入れ|変更)(して|する|します|しといて|しておいて|お願い|ください|て)*", " ", text
+    )
     s = re.sub(r"(の授業|授業|教室|で)\s*$", "", s.strip())
     s = re.sub(r"[、。,.!！\s]+", " ", s).strip()
     return s.strip(" にはをのでと") or None
@@ -209,6 +216,7 @@ def find_task_kind(text):
 
 
 # ---------- 表記ゆれ（ひらがな・カタカナ、誤字） ----------
+
 
 def to_hira(text):
     """カタカナをひらがなに、英字を小文字にそろえる（照合用）。"""
@@ -234,10 +242,16 @@ def fuzzy_contains(name, text):
         return 1.0
     if len(n) <= 3:
         return 0.0
-    limit, widths = (1, [len(n)]) if len(n) == 4 else (1, [len(n) - 1, len(n), len(n) + 1])         if len(n) <= 6 else (2, [len(n) - 1, len(n), len(n) + 1])
+    limit, widths = (
+        (1, [len(n)])
+        if len(n) == 4
+        else (1, [len(n) - 1, len(n), len(n) + 1])
+        if len(n) <= 6
+        else (2, [len(n) - 1, len(n), len(n) + 1])
+    )
     best = None
     for w in widths:
         for i in range(0, len(t) - w + 1):
-            d = _edit_distance(n, t[i:i + w])
+            d = _edit_distance(n, t[i : i + w])
             best = d if best is None else min(best, d)
     return 1 - best / len(n) if best is not None and best <= limit else 0.0

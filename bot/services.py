@@ -1,7 +1,8 @@
 """データの読み込みと、時間割・電車・地図・カレンダーの処理。対話には関与しない。"""
+
 import csv
-import json
 import datetime as dt
+import json
 from pathlib import Path
 
 import jpholiday
@@ -32,7 +33,7 @@ STATIONS = {s["id"]: s for s in _places["stations"]}
 def _load_trains():
     rows = []
     with open(DATA / "trains.csv", encoding="utf-8") as f:
-        lines = (l for l in f if not l.startswith("#"))
+        lines = (line for line in f if not line.startswith("#"))
         for r in csv.DictReader(lines):
             r["time"] = _hm(r["time"])
             rows.append(r)
@@ -43,6 +44,7 @@ TRAINS = _load_trains()
 
 
 # ---------- 時間割（classes は利用者ごとの授業リスト） ----------
+
 
 def classes_on(classes, weekday):
     return sorted((c for c in classes if c["weekday"] == weekday), key=lambda c: c["period"])
@@ -108,6 +110,7 @@ def describe_class(c):
 
 # ---------- 場所 ----------
 
+
 def guess_place(text):
     """建物・駅を探す（建物を優先、誤字も許す）。→ (場所, 完全一致か)"""
     found = [best_match(group, text) for group in (BUILDINGS.values(), STATIONS.values())]
@@ -130,6 +133,7 @@ def maps_url(place):
 
 
 # ---------- 電車 ----------
+
 
 def find_station(text):
     for s in STATIONS.values():
@@ -204,6 +208,7 @@ def train_label(r):
 
 # ---------- 課題・カレンダー ----------
 
+
 def tasks_due_soon(tasks, today, days=1):
     return [t for t in tasks if not t["done"] and 0 <= (t["deadline"] - today).days <= days]
 
@@ -221,8 +226,11 @@ def make_ics(tasks):
             f"DTSTART;VALUE=DATE:{d:%Y%m%d}",
             f"DTEND;VALUE=DATE:{d + dt.timedelta(days=1):%Y%m%d}",
             f"SUMMARY:【締切】{t['course']} {t['kind']}",
-            "BEGIN:VALARM", "ACTION:DISPLAY", f"DESCRIPTION:明日締切: {t['course']} {t['kind']}",
-            "TRIGGER:-PT6H", "END:VALARM",
+            "BEGIN:VALARM",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:明日締切: {t['course']} {t['kind']}",
+            "TRIGGER:-PT6H",
+            "END:VALARM",
             "END:VEVENT",
         ]
     lines.append("END:VCALENDAR")

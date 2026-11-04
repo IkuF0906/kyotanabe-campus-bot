@@ -4,6 +4,7 @@ data/eval/utterances.csv の発話を判定し、意図ごとの正解率・取�
 dev はルールの改善に使ってよい発話、test は改善に使わず最後の評価だけに使う発話。
 アプリの「通じなかった発話」から書き出した CSV の発話も、正解の意図を付けて dev に足していく。
 """
+
 import csv
 import sys
 from collections import Counter, defaultdict

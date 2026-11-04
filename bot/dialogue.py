@@ -1,4 +1,5 @@
 """対話管理：意図ごとの処理、足りない情報の聞き返し（スロットフィリング）、確認。"""
+
 import copy
 import datetime as dt
 import re
@@ -12,10 +13,10 @@ from . import services as sv
 class Reply:
     text: str
     places: list = field(default_factory=list)  # 地図に表示する目的地
-    origin: dict = None                          # 地図に表示する出発地（推定した現在地）
-    links: list = field(default_factory=list)   # (ラベル, URL)
-    choices: list = field(default_factory=list) # 返答の候補（画面ではボタンとして表示）
-    train: dict = None                           # 電車の計画（画面では発車標カードとして表示）
+    origin: dict = None  # 地図に表示する出発地（推定した現在地）
+    links: list = field(default_factory=list)  # (ラベル, URL)
+    choices: list = field(default_factory=list)  # 返答の候補（画面ではボタンとして表示）
+    train: dict = None  # 電車の計画（画面では発車標カードとして表示）
 
 
 YES_NO = ["はい", "いいえ"]
@@ -43,8 +44,8 @@ class Bot:
         self.tasks = []  # {"course", "kind", "deadline", "done"}
         self.settings = {"station": "dmae", "direction": {"kodo": "京都方面", "dmae": "京橋方面"}}
         self.pending = None  # 聞き返し中の状態 {"intent", "slots", "awaiting"}
-        self.misses = []     # 通じなかった発話 {"text", "intent", "at", "reason"}（ルール改善用）
-        self.last = None     # 直前の発話と、それをどの意図として扱ったか
+        self.misses = []  # 通じなかった発話 {"text", "intent", "at", "reason"}（ルール改善用）
+        self.last = None  # 直前の発話と、それをどの意図として扱ったか
 
     # ---------- 入口 ----------
 
@@ -99,8 +100,9 @@ class Bot:
     def set_class(self, weekday, period, name, building, room):
         """その曜日・時限の授業を登録（既にあれば置き換え）。"""
         self.remove_class(weekday, period)
-        self.classes.append({"weekday": weekday, "period": period, "name": name, "aliases": [],
-                             "building": building, "room": room})
+        self.classes.append(
+            {"weekday": weekday, "period": period, "name": name, "aliases": [], "building": building, "room": room}
+        )
 
     def remove_class(self, weekday, period):
         self.classes = [c for c in self.classes if not (c["weekday"] == weekday and c["period"] == period)]
@@ -109,8 +111,7 @@ class Bot:
 
     def dump(self):
         tasks = [{**t, "deadline": t["deadline"].isoformat()} for t in self.tasks]
-        return {"version": 1, "classes": self.classes, "tasks": tasks, "settings": self.settings,
-                "misses": self.misses}
+        return {"version": 1, "classes": self.classes, "tasks": tasks, "settings": self.settings, "misses": self.misses}
 
     def load(self, data):
         """dump() の内容を読み込む。形式が合わなければ何もしない（False を返す）。"""
@@ -125,14 +126,17 @@ class Bot:
         return True
 
     def open_tasks(self, today):
-        return sorted((t for t in self.tasks if not t["done"] and t["deadline"] >= today),
-                      key=lambda t: t["deadline"])
+        return sorted((t for t in self.tasks if not t["done"] and t["deadline"] >= today), key=lambda t: t["deadline"])
 
     # ---------- 課題の登録（スロット: course, deadline） ----------
 
     def _on_add_task(self, text, now):
-        slots = {"kind": nlu.find_task_kind(text), "course": None, "inferred": False,
-                 "deadline": nlu.find_deadline(text, now.date())}
+        slots = {
+            "kind": nlu.find_task_kind(text),
+            "course": None,
+            "inferred": False,
+            "deadline": nlu.find_deadline(text, now.date()),
+        }
         c, exact = sv.guess_course(self.classes, text)
         if c and not exact:
             slots["inferred"] = "fuzzy"  # 誤字込みで一致 → 登録前に確認する
@@ -156,22 +160,31 @@ class Bot:
             return self._ask_course(slots)
         if not slots["deadline"]:
             self.pending = {"intent": "add_task", "slots": slots, "awaiting": "deadline"}
-            guess = {"time": "（時間割から推定。違えば授業名を教えてください）",
-                     "fuzzy": "（違えば授業名を教えてください）"}.get(slots["inferred"], "")
-            return Reply(f"{slots['course']}の{slots['kind']}ですね{guess}。締切はいつですか？（例: 15日、来週金曜）",
-                         choices=["明日", "7日後", "14日後"])
+            guess = {
+                "time": "（時間割から推定。違えば授業名を教えてください）",
+                "fuzzy": "（違えば授業名を教えてください）",
+            }.get(slots["inferred"], "")
+            return Reply(
+                f"{slots['course']}の{slots['kind']}ですね{guess}。締切はいつですか？（例: 15日、来週金曜）",
+                choices=["明日", "7日後", "14日後"],
+            )
         if slots["inferred"]:
             self.pending = {"intent": "add_task", "slots": slots, "awaiting": "confirm"}
             why = "時間割から推定しました。\n" if slots["inferred"] == "time" else ""
-            return Reply(f"{why}**{slots['course']}** の{slots['kind']}、"
-                         f"締切 **{_fmt_date(slots['deadline'])}** で登録していいですか？", choices=YES_NO)
+            return Reply(
+                f"{why}**{slots['course']}** の{slots['kind']}、"
+                f"締切 **{_fmt_date(slots['deadline'])}** で登録していいですか？",
+                choices=YES_NO,
+            )
         return self._register_task(slots)
 
     def _register_task(self, slots):
         self.pending = None
         self.add_task(slots["course"], slots["kind"], slots["deadline"])
-        return Reply(f"登録しました：{slots['course']} {slots['kind']}（締切 {_fmt_date(slots['deadline'])}）\n"
-                     "前日にリマインドします。スマホに通知したい場合は「リマインダー」タブから .ics でカレンダーに追加できます。")
+        return Reply(
+            f"登録しました：{slots['course']} {slots['kind']}（締切 {_fmt_date(slots['deadline'])}）\n"
+            "前日にリマインドします。スマホに通知したい場合は「リマインダー」タブから .ics でカレンダーに追加できます。"
+        )
 
     def _continue_pending(self, text, now):
         """聞き返しへの返答を処理する。答えになっていなければ None。"""
@@ -263,19 +276,26 @@ class Bot:
         current = sv.class_at(self.classes, wd, period)
         if current and current["name"] != slots["name"] and not slots.get("overwrite_ok"):
             self.pending = {"intent": "edit_class", "slots": slots, "awaiting": "confirm_overwrite"}
-            return Reply(f"{slot_name}には **{current['name']}** が入っています。**{slots['name']}** に置き換えますか？",
-                         choices=YES_NO)
+            return Reply(
+                f"{slot_name}には **{current['name']}** が入っています。**{slots['name']}** に置き換えますか？",
+                choices=YES_NO,
+            )
         if not (slots["building"] or slots["room"] or slots["room_asked"]):
             slots["room_asked"] = True
             self.pending = {"intent": "edit_class", "slots": slots, "awaiting": "room"}
-            return Reply(f"{slot_name}「{slots['name']}」ですね。教室はどこですか？\n"
-                         "（例: 恵道館 KD201。わからなければ「なし」）",
-                         choices=["なし"] + [b["name"] for b in sv.BUILDINGS.values()][:3])
+            return Reply(
+                f"{slot_name}「{slots['name']}」ですね。教室はどこですか？\n"
+                "（例: 恵道館 KD201。わからなければ「なし」）",
+                choices=["なし"] + [b["name"] for b in sv.BUILDINGS.values()][:3],
+            )
         self.pending = None
         self.set_class(wd, period, slots["name"], slots["building"], slots["room"])
         where = " ".join(x for x in [sv.BUILDINGS.get(slots["building"], {}).get("name", ""), slots["room"]] if x)
-        return Reply(f"登録しました：{slot_name} {slots['name']}" + (f"（{where}）" if where else "") +
-                     "\n「時間割」タブにも反映されています。")
+        return Reply(
+            f"登録しました：{slot_name} {slots['name']}"
+            + (f"（{where}）" if where else "")
+            + "\n「時間割」タブにも反映されています。"
+        )
 
     def _continue_class(self, text, slots, awaiting):
         wd, period = slots["weekday"], slots["period"]
@@ -321,8 +341,11 @@ class Bot:
         span = nlu.find_range(text, now.date())
         if span:
             tasks = [t for t in tasks if span[0] <= t["deadline"] <= span[1]]
-            title = f"{_fmt_date(span[0])}〜{_fmt_date(span[1])}が締切の課題" if span[0] != span[1] \
+            title = (
+                f"{_fmt_date(span[0])}〜{_fmt_date(span[1])}が締切の課題"
+                if span[0] != span[1]
                 else f"{_fmt_date(span[0])}が締切の課題"
+            )
         c = (sv.find_course(self.classes, text) or {}).get("name") or self._task_course_in(text, tasks)
         if c:
             tasks = [t for t in tasks if t["course"] == c]
@@ -366,14 +389,17 @@ class Bot:
             return Reply("該当する未完了の課題が見つかりませんでした。", choices=["課題一覧"])
         if len(tasks) > 1:
             self.pending = {"intent": intent, "slots": {"ids": [t["id"] for t in tasks]}, "awaiting": "pick"}
-            return Reply(f"どの課題を{verb}しますか？\n" + "\n".join(self._task_line(t, now.date()) for t in tasks),
-                         choices=[self._task_label(t) for t in tasks][:4])
+            return Reply(
+                f"どの課題を{verb}しますか？\n" + "\n".join(self._task_line(t, now.date()) for t in tasks),
+                choices=[self._task_label(t) for t in tasks][:4],
+            )
         t = tasks[0]
         # 削除・推測（授業名なし／誤字込み）のときは確認する。授業名がはっきりしている完了はそのまま
         if intent == "delete_task" or fuzzy or not named:
             self.pending = {"intent": intent, "slots": {"ids": [t["id"]]}, "awaiting": "confirm"}
-            return Reply(f"**{t['course']} {t['kind']}**（締切 {_fmt_date(t['deadline'])}）を{verb}しますか？",
-                         choices=YES_NO)
+            return Reply(
+                f"**{t['course']} {t['kind']}**（締切 {_fmt_date(t['deadline'])}）を{verb}しますか？", choices=YES_NO
+            )
         return self._apply_task_action(intent, t)
 
     def _task_label(self, t):
@@ -406,8 +432,10 @@ class Bot:
         # 答えになっていない → もう一度聞く（「キャンセル」でやめられる）
         if p["awaiting"] == "confirm":
             return Reply("「はい」か「いいえ」で答えてください。（やめるなら「キャンセル」）", choices=YES_NO)
-        return Reply("どれか選んでください。（「1つ目」のように番号でも選べます。やめるなら「キャンセル」）",
-                     choices=[self._task_label(t) for t in cands][:4])
+        return Reply(
+            "どれか選んでください。（「1つ目」のように番号でも選べます。やめるなら「キャンセル」）",
+            choices=[self._task_label(t) for t in cands][:4],
+        )
 
     def _pick_task(self, text, cands):
         """候補から1つ選ぶ：ボタンの文字そのもの →「1つ目」→ 授業名・種類・締切日で絞り込む。"""
@@ -419,8 +447,11 @@ class Bot:
             return cands[int(m.group(1)) - 1]
         d = nlu.find_day(text, self.now.date())
         hit, matched = cands, False
-        for keep in (lambda t: nlu.fuzzy_contains(t["course"], text), lambda t: t["kind"] in text,
-                     lambda t: t["deadline"] == d):
+        for keep in (
+            lambda t: nlu.fuzzy_contains(t["course"], text),
+            lambda t: t["kind"] in text,
+            lambda t: t["deadline"] == d,
+        ):
             narrowed = [t for t in hit if keep(t)]
             if narrowed:  # 手がかりが合ったときだけ絞り込む
                 hit, matched = narrowed, True
@@ -454,15 +485,20 @@ class Bot:
         st = sv.STATIONS[station]
 
         # 画面では train を発車標カードとして描く。文章は前置き（いつ出る想定か）だけ
-        plan = {"station": station, "direction": direction, "walk": walk, "arrive": arrive, "trains": trains,
-                "origin": origin["name"] if origin else "キャンパス"}
+        plan = {
+            "station": station,
+            "direction": direction,
+            "walk": walk,
+            "arrive": arrive,
+            "trains": trains,
+            "origin": origin["name"] if origin else "キャンパス",
+        }
         text = "\n".join(notes) if notes else f"{where}{st['name']}へ向かう場合の電車です"
         if sv.day_type(now.date()) != "weekday":
             text += f"（{sv.day_label(now.date())}）"
         if not trains:
             text += f"\n今日の{direction}の電車はもうありません"
-        return Reply(text, places=[st], origin=origin, train=plan,
-                     links=[(f"{st['name']}への道案内", sv.maps_url(st))])
+        return Reply(text, places=[st], origin=origin, train=plan, links=[(f"{st['name']}への道案内", sv.maps_url(st))])
 
     def _on_settings(self, text, now):
         station = sv.find_station(text)
@@ -484,8 +520,10 @@ class Bot:
             wd, period, _ = slot
             c = sv.class_at(self.classes, wd, period)
             if not c:
-                return Reply(f"{sv.WEEKDAY_JA[wd]}曜{period}限は空きコマです。",
-                             choices=[f"{sv.WEEKDAY_JA[wd]}曜{period}限に授業を追加"])
+                return Reply(
+                    f"{sv.WEEKDAY_JA[wd]}曜{period}限は空きコマです。",
+                    choices=[f"{sv.WEEKDAY_JA[wd]}曜{period}限に授業を追加"],
+                )
             return Reply(f"{sv.WEEKDAY_JA[wd]}曜の {sv.describe_class(c)} です。")
         day = nlu.find_day(text, now.date())
         # 日付の指定がなく「今日」「時間割」でもなければ「次の授業」の質問とみなす
@@ -542,8 +580,11 @@ class Bot:
 
     def _show_place(self, place):
         self.pending = None
-        return Reply(f"{place['name']}の場所を地図に表示しました。現在地からの道案内はリンクから開けます。",
-                     places=[place], links=[(f"{place['name']}への道案内（Googleマップ）", sv.maps_url(place))])
+        return Reply(
+            f"{place['name']}の場所を地図に表示しました。現在地からの道案内はリンクから開けます。",
+            places=[place],
+            links=[(f"{place['name']}への道案内（Googleマップ）", sv.maps_url(place))],
+        )
 
     # ---------- その他 ----------
 

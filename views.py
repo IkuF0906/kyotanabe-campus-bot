@@ -1,4 +1,5 @@
 """各タブ（ページ）の画面。どのページも同じ Bot（時間割・課題・設定）を見る。"""
+
 import csv
 import datetime as dt
 import io
@@ -35,8 +36,10 @@ def _notice(bot, now):
     if not soon:
         return
     with st.container(border=True):
-        st.markdown(":material/schedule: **締切が近い課題**  \n" + "  \n".join(
-            f":red[{_left(t['deadline'], now.date())}]　{t['course']} {t['kind']}" for t in soon))
+        st.markdown(
+            ":material/schedule: **締切が近い課題**  \n"
+            + "  \n".join(f":red[{_left(t['deadline'], now.date())}]　{t['course']} {t['kind']}" for t in soon)
+        )
 
 
 # ---------- 発車標カード（電車ページとチャットで共通） ----------
@@ -66,7 +69,9 @@ CARD_CSS = """<style>
 def train_card(plan, now, lead=True):
     """plan: dialogue/services が返す電車の計画。lead=True のカードだけ時刻を強調色にする。"""
     s = sv.STATIONS[plan["station"]]
-    head = (f'<div class="tc-st">{escape(s["name"])}<small>{escape(s["line"])} · {escape(plan["direction"])}</small></div>')
+    head = (
+        f'<div class="tc-st">{escape(s["name"])}<small>{escape(s["line"])} · {escape(plan["direction"])}</small></div>'
+    )
     sub = f'{escape(plan["origin"])}から徒歩{plan["walk"]}分 · <span class="t">{plan["arrive"]:%H:%M}</span>着'
     trains = plan["trains"]
     best = next((r for r, tag in trains if tag == "おすすめ"), None)
@@ -74,14 +79,19 @@ def train_card(plan, now, lead=True):
         body = f'<div class="tc-main"><span class="tc-time">本日終了</span></div><div class="tc-sub">{sub}</div>'
     else:
         mins = int((dt.datetime.combine(now.date(), best["time"]) - now).total_seconds() // 60)
-        rest = "".join(f'<span><span class="t">{r["time"]:%H:%M}</span> {escape(sv.train_label(r))}'
-                       + (f"<em>{tag}</em>" if tag else "") + "</span>"
-                       for r, tag in trains if r is not best)
-        body = (f'<div class="tc-main"><span class="tc-time t">{best["time"]:%H:%M}</span>'
-                f'<span class="tc-dir">{escape(sv.train_label(best) or plan["direction"])}</span>'
-                f'<span class="tc-in">発車まで<span class="t">{mins}</span>分</span></div>'
-                f'<div class="tc-sub">{sub}</div>'
-                + (f'<div class="tc-next">{rest}</div>' if rest else ""))
+        rest = "".join(
+            f'<span><span class="t">{r["time"]:%H:%M}</span> {escape(sv.train_label(r))}'
+            + (f"<em>{tag}</em>" if tag else "")
+            + "</span>"
+            for r, tag in trains
+            if r is not best
+        )
+        body = (
+            f'<div class="tc-main"><span class="tc-time t">{best["time"]:%H:%M}</span>'
+            f'<span class="tc-dir">{escape(sv.train_label(best) or plan["direction"])}</span>'
+            f'<span class="tc-in">発車まで<span class="t">{mins}</span>分</span></div>'
+            f'<div class="tc-sub">{sub}</div>' + (f'<div class="tc-next">{rest}</div>' if rest else "")
+        )
     st.html(CARD_CSS + f'<div class="tc{" lead" if lead else ""}">{head}{body}</div>')
 
 
@@ -94,8 +104,15 @@ def _send(bot, now, text):
     reply = bot.respond(text, now)
     st.session_state.history += [
         {"role": "user", "text": text},
-        {"role": "assistant", "text": reply.text, "places": reply.places, "origin": reply.origin,
-         "links": reply.links, "choices": reply.choices, "train": reply.train},
+        {
+            "role": "assistant",
+            "text": reply.text,
+            "places": reply.places,
+            "origin": reply.origin,
+            "links": reply.links,
+            "choices": reply.choices,
+            "train": reply.train,
+        },
     ]
     st.rerun()
 
@@ -150,8 +167,14 @@ def miss_log(bot):
         buf = io.StringIO()
         buf.write("﻿")  # Excel で開いても文字化けしないよう BOM を付ける
         csv.writer(buf).writerows(rows)
-        st.download_button("CSVで書き出す", buf.getvalue(), file_name="misses.csv", mime="text/csv",
-                           icon=":material/download:", width="stretch")
+        st.download_button(
+            "CSVで書き出す",
+            buf.getvalue(),
+            file_name="misses.csv",
+            mime="text/csv",
+            icon=":material/download:",
+            width="stretch",
+        )
         if st.button("記録を消す", type="tertiary", icon=":material/delete:"):
             bot.misses = []
             st.rerun()
@@ -204,8 +227,10 @@ def timetable_page(bot, now):
                     body += '<span class="tag now">受講中</span><br>'
                 elif c is nxt and nxt_day == now.date():
                     body += '<span class="tag next">次</span><br>'
-                body += (f'<div class="name">{escape(c["name"])}</div>'
-                         f'<div class="room">{escape(b)} {escape(c.get("room", ""))}</div>')
+                body += (
+                    f'<div class="name">{escape(c["name"])}</div>'
+                    f'<div class="room">{escape(b)} {escape(c.get("room", ""))}</div>'
+                )
                 if open_count.get(c["name"]):
                     body += f'<div class="task">課題 {open_count[c["name"]]}件</div>'
             cells.append(f'<td class="{" ".join(cls)}">{body}</td>')
@@ -222,8 +247,12 @@ def timetable_page(bot, now):
         with st.form("class_form", clear_on_submit=False, border=False):
             name = st.text_input("授業名", cur["name"] if cur else "")
             c3, c4 = st.columns(2)
-            building = c3.selectbox("建物", bids, index=bids.index(cur["building"]) if cur and cur.get("building") in bids else 0,
-                                    format_func=lambda i: sv.BUILDINGS[i]["name"] if i else "未登録")
+            building = c3.selectbox(
+                "建物",
+                bids,
+                index=bids.index(cur["building"]) if cur and cur.get("building") in bids else 0,
+                format_func=lambda i: sv.BUILDINGS[i]["name"] if i else "未登録",
+            )
             room = c4.text_input("教室", cur.get("room", "") if cur else "")
             with st.container(horizontal=True):
                 if st.form_submit_button("保存", type="primary") and name.strip():
@@ -235,6 +264,7 @@ def timetable_page(bot, now):
 
 
 # ---------- リマインダー ----------
+
 
 def reminder_page(bot, now):
     st.title("リマインダー")
@@ -258,8 +288,15 @@ def reminder_page(bot, now):
                 st.rerun()
 
     if tasks or overdue:
-        st.download_button("カレンダーに追加", sv.make_ics(bot.tasks), file_name="tasks.ics", mime="text/calendar",
-                           type="primary", icon=":material/event:", help="締切の前日18時に通知する .ics ファイル")
+        st.download_button(
+            "カレンダーに追加",
+            sv.make_ics(bot.tasks),
+            file_name="tasks.ics",
+            mime="text/calendar",
+            type="primary",
+            icon=":material/event:",
+            help="締切の前日18時に通知する .ics ファイル",
+        )
 
     # 課題がないときは追加欄を最初から開いておく
     with st.expander("課題を追加", icon=":material/add:", expanded=not (tasks or overdue)):
@@ -286,6 +323,7 @@ def reminder_page(bot, now):
 
 # ---------- 電車 ----------
 
+
 def train_page(bot, now):
     st.title("帰りの電車")
     last = sv.latest_started_class(bot.classes, now)
@@ -293,17 +331,25 @@ def train_page(bot, now):
     c1, c2, c3 = st.columns(3)
     bids = list(sv.BUILDINGS)
     default_b = last["building"] if last and last.get("building") in bids else bids[0]
-    building = c1.selectbox("今いる建物", bids, index=bids.index(default_b),
-                            format_func=lambda i: sv.BUILDINGS[i]["name"], help="初期値は直近の授業の建物")
+    building = c1.selectbox(
+        "今いる建物",
+        bids,
+        index=bids.index(default_b),
+        format_func=lambda i: sv.BUILDINGS[i]["name"],
+        help="初期値は直近の授業の建物",
+    )
     todays = sv.classes_on(bot.classes, now.weekday())
-    opts = ["今すぐ"] + [f"{c['period']}限（{c['name']}）の後" for c in todays if sv.PERIODS[c["period"]][1] > now.time()]
+    opts = ["今すぐ"] + [
+        f"{c['period']}限（{c['name']}）の後" for c in todays if sv.PERIODS[c["period"]][1] > now.time()
+    ]
     when = c2.selectbox("出発", opts)
     depart = now
     if when != "今すぐ":
         depart = dt.datetime.combine(now.date(), sv.PERIODS[int(when.split("限")[0])][1])
     ids = list(sv.STATIONS)
-    station = c3.selectbox("いつもの駅", ids, index=ids.index(bot.settings["station"]),
-                           format_func=lambda i: sv.STATIONS[i]["name"])
+    station = c3.selectbox(
+        "いつもの駅", ids, index=ids.index(bot.settings["station"]), format_func=lambda i: sv.STATIONS[i]["name"]
+    )
     bot.settings["station"] = station
 
     # 2駅を並べて比べる。いつもの駅を左に置き、その時刻だけ強調色にする
@@ -312,19 +358,39 @@ def train_page(bot, now):
         s = sv.STATIONS[sid]
         with col:
             dirs = s["directions"]
-            bot.settings["direction"][sid] = st.segmented_control(
-                f"{s['name']}の方面", dirs, default=bot.settings["direction"][sid], key=f"dir_{sid}",
-                label_visibility="collapsed") or bot.settings["direction"][sid]
+            bot.settings["direction"][sid] = (
+                st.segmented_control(
+                    f"{s['name']}の方面",
+                    dirs,
+                    default=bot.settings["direction"][sid],
+                    key=f"dir_{sid}",
+                    label_visibility="collapsed",
+                )
+                or bot.settings["direction"][sid]
+            )
             walk, arrive, trains = sv.plan_trains(depart, building, sid, bot.settings["direction"][sid])
-            train_card({"station": sid, "direction": bot.settings["direction"][sid], "walk": walk, "arrive": arrive,
-                        "trains": trains, "origin": sv.BUILDINGS[building]["name"]}, now, lead=sid == station)
+            train_card(
+                {
+                    "station": sid,
+                    "direction": bot.settings["direction"][sid],
+                    "walk": walk,
+                    "arrive": arrive,
+                    "trains": trains,
+                    "origin": sv.BUILDINGS[building]["name"],
+                },
+                now,
+                lead=sid == station,
+            )
             st.link_button("駅までの道案内", sv.maps_url(s), icon=":material/directions_walk:", width="stretch")
 
     _map([sv.STATIONS[station]], sv.BUILDINGS[building], height=300)
-    st.caption(f"{sv.day_label(now.date())}で表示しています。時刻表はダミーデータです。徒歩分は興戸が実測（正門から15分）にもとづく値、同志社前は推定値です")
+    st.caption(
+        f"{sv.day_label(now.date())}で表示しています。時刻表はダミーデータです。徒歩分は興戸が実測（正門から15分）にもとづく値、同志社前は推定値です"
+    )
 
 
 # ---------- マップ ----------
+
 
 def map_page(bot, now):
     st.title("キャンパスマップ")
@@ -333,16 +399,21 @@ def map_page(bot, now):
     default = nxt["building"] if nxt and nxt.get("building") in places else next(iter(places))
     keys = list(places)
     c1, c2 = st.columns([0.6, 0.4], vertical_alignment="bottom")
-    pid = c1.selectbox("場所", keys, index=keys.index(default), format_func=lambda k: places[k]["name"],
-                       help="初期値は次の授業の建物")
+    pid = c1.selectbox(
+        "場所", keys, index=keys.index(default), format_func=lambda k: places[k]["name"], help="初期値は次の授業の建物"
+    )
     p = places[pid]
-    c2.link_button(f"{p['name']}への道案内", sv.maps_url(p), type="primary", icon=":material/directions_walk:",
-                   width="stretch")
+    c2.link_button(
+        f"{p['name']}への道案内", sv.maps_url(p), type="primary", icon=":material/directions_walk:", width="stretch"
+    )
     _map([p], height=420)
 
     here = [c for c in bot.classes if c.get("building") == pid]
     if here:
         st.subheader("この建物の授業")
-        st.markdown("  \n".join(
-            f"{DAYS[c['weekday']]}{c['period']}限　{c['name']}　:gray[{c.get('room', '')}]"
-            for c in sorted(here, key=lambda c: (c["weekday"], c["period"]))))
+        st.markdown(
+            "  \n".join(
+                f"{DAYS[c['weekday']]}{c['period']}限　{c['name']}　:gray[{c.get('room', '')}]"
+                for c in sorted(here, key=lambda c: (c["weekday"], c["period"]))
+            )
+        )

@@ -1,4 +1,5 @@
 """京田辺キャンパス チャットボット（試作版）。起動: streamlit run app.py"""
+
 import datetime as dt
 
 import streamlit as st
@@ -32,13 +33,16 @@ def page(func, title, icon, default=False):
     return st.Page(lambda: func(bot, now), title=title, icon=icon, url_path=func.__name__, default=default)
 
 
-nav = st.navigation([
-    page(views.chat_page, "チャット", ":material/chat_bubble:", default=True),
-    page(views.timetable_page, "時間割", ":material/calendar_view_week:"),
-    page(views.reminder_page, "リマインダー", ":material/notifications:"),
-    page(views.train_page, "電車", ":material/train:"),
-    page(views.map_page, "マップ", ":material/map:"),
-], position="sidebar")
+nav = st.navigation(
+    [
+        page(views.chat_page, "チャット", ":material/chat_bubble:", default=True),
+        page(views.timetable_page, "時間割", ":material/calendar_view_week:"),
+        page(views.reminder_page, "リマインダー", ":material/notifications:"),
+        page(views.train_page, "電車", ":material/train:"),
+        page(views.map_page, "マップ", ":material/map:"),
+    ],
+    position="sidebar",
+)
 
 # ---------- デモ用の時刻（全ページ共通、ナビの下に小さく） ----------
 with st.sidebar:
@@ -49,8 +53,13 @@ with st.sidebar:
     now = dt.datetime.combine(d, t) if fixed else dt.datetime.now()
     st.caption(f"現在 {now:%m/%d}（{sv.WEEKDAY_JA[now.weekday()]}）{now:%H:%M}")
     views.miss_log(bot)
-    st.button("保存データを消す", icon=":material/restart_alt:", on_click=reset, type="tertiary",
-              help="時間割・課題・設定はこのブラウザに保存されます。初期状態に戻します")
+    st.button(
+        "保存データを消す",
+        icon=":material/restart_alt:",
+        on_click=reset,
+        type="tertiary",
+        help="時間割・課題・設定はこのブラウザに保存されます。初期状態に戻します",
+    )
 
 nav.run()
 with st.sidebar:
