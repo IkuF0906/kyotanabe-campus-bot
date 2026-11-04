@@ -321,7 +321,7 @@ def train_page(bot, now):
             st.link_button("駅までの道案内", sv.maps_url(s), icon=":material/directions_walk:", width="stretch")
 
     _map([sv.STATIONS[station]], sv.BUILDINGS[building], height=300)
-    st.caption(f"{sv.day_label(now.date())}で表示しています。時刻表はダミーデータ、駅までの徒歩分は推定値です")
+    st.caption(f"{sv.day_label(now.date())}で表示しています。時刻表はダミーデータです。徒歩分は興戸が実測（正門から15分）にもとづく値、同志社前は推定値です")
 
 
 # ---------- マップ ----------
