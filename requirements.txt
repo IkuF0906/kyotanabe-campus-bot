@@ -1,2 +1,3 @@
 streamlit>=1.66.1
 folium>=0.20.0
+jpholiday>=1.0.3

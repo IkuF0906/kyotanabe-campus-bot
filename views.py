@@ -1,5 +1,7 @@
 """各タブ（ページ）の画面。どのページも同じ Bot（時間割・課題・設定）を見る。"""
+import csv
 import datetime as dt
+import io
 from html import escape
 
 import streamlit as st
@@ -52,24 +54,31 @@ CARD_CSS = """<style>
 .tc-next {margin-top:16px; padding-top:12px; border-top:1px solid rgba(23,23,23,.08);
           display:flex; flex-wrap:wrap; gap:4px 20px; font-size:14px; color:#525252}
 .tc-next em {font-style:normal; font-size:12px; color:#737373; margin-left:4px}
+.tc-dir, .tc-in {white-space:nowrap}
+@media (max-width:480px) {
+  .tc-main {flex-wrap:wrap; row-gap:8px}
+  .tc-time {font-size:40px}
+  .tc-in {margin-left:0; width:100%}
+}
 </style>""".replace("__A__", ACCENT)
 
 
 def train_card(plan, now, lead=True):
     """plan: dialogue/services が返す電車の計画。lead=True のカードだけ時刻を強調色にする。"""
     s = sv.STATIONS[plan["station"]]
-    head = (f'<div class="tc-st">{escape(s["name"])}<small>{escape(s["line"])}</small></div>')
+    head = (f'<div class="tc-st">{escape(s["name"])}<small>{escape(s["line"])} · {escape(plan["direction"])}</small></div>')
     sub = f'{escape(plan["origin"])}から徒歩{plan["walk"]}分 · <span class="t">{plan["arrive"]:%H:%M}</span>着'
     trains = plan["trains"]
-    best = next((t for t, tag in trains if tag == "おすすめ"), None)
+    best = next((r for r, tag in trains if tag == "おすすめ"), None)
     if best is None:
         body = f'<div class="tc-main"><span class="tc-time">本日終了</span></div><div class="tc-sub">{sub}</div>'
     else:
-        mins = int((dt.datetime.combine(now.date(), best) - now).total_seconds() // 60)
-        rest = "".join(f'<span><span class="t">{t:%H:%M}</span>' + (f"<em>{tag}</em>" if tag else "") + "</span>"
-                       for t, tag in trains if t != best)
-        body = (f'<div class="tc-main"><span class="tc-time t">{best:%H:%M}</span>'
-                f'<span class="tc-dir">{escape(plan["direction"])}</span>'
+        mins = int((dt.datetime.combine(now.date(), best["time"]) - now).total_seconds() // 60)
+        rest = "".join(f'<span><span class="t">{r["time"]:%H:%M}</span> {escape(sv.train_label(r))}'
+                       + (f"<em>{tag}</em>" if tag else "") + "</span>"
+                       for r, tag in trains if r is not best)
+        body = (f'<div class="tc-main"><span class="tc-time t">{best["time"]:%H:%M}</span>'
+                f'<span class="tc-dir">{escape(sv.train_label(best) or plan["direction"])}</span>'
                 f'<span class="tc-in">発車まで<span class="t">{mins}</span>分</span></div>'
                 f'<div class="tc-sub">{sub}</div>'
                 + (f'<div class="tc-next">{rest}</div>' if rest else ""))
@@ -114,9 +123,38 @@ def chat_page(bot, now):
                         kind = "primary" if choice == "はい" else "secondary"
                         if st.button(choice, key=f"choice_{i}_{j}", type=kind):
                             _send(bot, now, choice)
+            # 最新の返答が的外れなら、直前の発話を「通じなかった発話」として記録できる（ルール改善用）
+            # 意図を判定できなかった発話は自動で記録済みなのでボタンは出さない
+            if i == len(history) - 1 and i > 0 and bot.last and bot.last["intent"] != "unknown":
+                if msg.get("reported"):
+                    st.caption("記録しました。ルールの改善に使います")
+                elif st.button("通じなかった", key=f"miss_{i}", icon=":material/thumb_down:", type="tertiary"):
+                    bot.log_miss(bot.last["text"], bot.last["intent"], now, "利用者が報告")
+                    msg["reported"] = True
+                    st.rerun()
 
     if text := st.chat_input("メッセージ（例: 今日レポートあった、15日まで）"):
         _send(bot, now, text)
+
+
+def miss_log(bot):
+    """通じなかった発話の記録（サイドバー）。CSV に正解の意図を書き足して data/eval に加える。"""
+    with st.expander(f"通じなかった発話 {len(bot.misses)}件", icon=":material/feedback:"):
+        if not bot.misses:
+            st.caption("意図を判定できなかった発話と、「通じなかった」を押した発話がここに貯まります")
+            return
+        for m in bot.misses[-5:][::-1]:
+            st.caption(f"{m['at'][5:]}　{m['text']}")
+        rows = [["text", "判定した意図", "正解の意図", "日時", "記録の理由"]]
+        rows += [[m["text"], m["intent"], "", m["at"], m["reason"]] for m in bot.misses]
+        buf = io.StringIO()
+        buf.write("﻿")  # Excel で開いても文字化けしないよう BOM を付ける
+        csv.writer(buf).writerows(rows)
+        st.download_button("CSVで書き出す", buf.getvalue(), file_name="misses.csv", mime="text/csv",
+                           icon=":material/download:", width="stretch")
+        if st.button("記録を消す", type="tertiary", icon=":material/delete:"):
+            bot.misses = []
+            st.rerun()
 
 
 # ---------- 時間割 ----------
@@ -283,7 +321,7 @@ def train_page(bot, now):
             st.link_button("駅までの道案内", sv.maps_url(s), icon=":material/directions_walk:", width="stretch")
 
     _map([sv.STATIONS[station]], sv.BUILDINGS[building], height=300)
-    st.caption("時刻表はダミーデータ、駅までの徒歩分は推定値です")
+    st.caption(f"{sv.day_label(now.date())}で表示しています。時刻表はダミーデータ、駅までの徒歩分は推定値です")
 
 
 # ---------- マップ ----------

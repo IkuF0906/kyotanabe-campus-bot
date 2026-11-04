@@ -4,6 +4,10 @@ import json
 import datetime as dt
 from pathlib import Path
 
+import jpholiday
+
+from .nlu import fuzzy_contains
+
 DATA = Path(__file__).resolve().parent.parent / "data"
 WEEKDAY_JA = "月火水木金土日"
 
@@ -71,14 +75,28 @@ def next_class(classes, now):
     return None, None
 
 
+def best_match(items, text, names=lambda x: [x["name"], *x.get("aliases", [])]):
+    """text に名前（略称を含む）が出てくる item を探す。→ (item, 一致度)。一致度 1.0 は完全一致、1未満は誤字込み。
+    完全一致を優先し、同じ一致度なら長い名前を優先する（「データベース論」>「データベース」）。"""
+    best, key = None, (0.0, 0)
+    for item in items:
+        for name in names(item):
+            score = fuzzy_contains(name, text)
+            if score and (score, len(name)) > key:
+                best, key = item, (score, len(name))
+    return best, key[0]
+
+
 def find_course(classes, text):
-    """発話中に含まれる授業名・略称を探す（長い名前を優先）。"""
-    cands = []
-    for c in classes:
-        for name in [c["name"], *c.get("aliases", [])]:
-            if name.lower() in text.lower():
-                cands.append((len(name), c))
-    return max(cands, key=lambda x: x[0])[1] if cands else None
+    """発話中の授業名・略称（完全一致のみ。ひらがな・カタカナの違いは同じとみなす）。"""
+    c, score = best_match(classes, text)
+    return c if score == 1.0 else None
+
+
+def guess_course(classes, text):
+    """誤字も許して授業を探す。→ (授業, 完全一致か)"""
+    c, score = best_match(classes, text)
+    return c, score == 1.0
 
 
 def describe_class(c):
@@ -90,14 +108,20 @@ def describe_class(c):
 
 # ---------- 場所 ----------
 
+def guess_place(text):
+    """建物・駅を探す（建物を優先、誤字も許す）。→ (場所, 完全一致か)"""
+    found = [best_match(group, text) for group in (BUILDINGS.values(), STATIONS.values())]
+    exact = next((p for p, score in found if score == 1.0), None)
+    if exact:
+        return exact, True
+    p, score = max(found, key=lambda x: x[1])
+    return (p, False) if score else (None, False)
+
+
 def find_place(text):
-    for b in BUILDINGS.values():
-        if any(a in text for a in [b["name"], *b["aliases"]]):
-            return b
-    for s in STATIONS.values():
-        if any(a in text for a in [s["name"], *s["aliases"]]):
-            return s
-    return None
+    """建物か駅（完全一致のみ）。"""
+    p, exact = guess_place(text)
+    return p if exact else None
 
 
 def maps_url(place):
@@ -126,24 +150,53 @@ def walk_minutes(building_id, station_id, default=12):
     return b["walk"][station_id] if b else default
 
 
+YEAR_END = {(12, 30), (12, 31), (1, 1), (1, 2), (1, 3)}  # 鉄道各社は年末年始を休日ダイヤで運転する
+
+
+def day_type(date):
+    """その日のダイヤ：平日 weekday / 土曜 saturday / 日曜・祝日・年末年始 holiday。"""
+    if date.weekday() == 6 or jpholiday.is_holiday(date) or (date.month, date.day) in YEAR_END:
+        return "holiday"
+    return "saturday" if date.weekday() == 5 else "weekday"
+
+
+def day_label(date):
+    return "平日ダイヤ" if day_type(date) == "weekday" else "土休日ダイヤ"
+
+
+def timetable(station_id, direction, date):
+    """その日の時刻表（時刻順）。土曜ダイヤが無い駅は休日ダイヤを使う。"""
+    rows = [r for r in TRAINS if r["station"] == station_id and r["direction"] == direction]
+    kind = day_type(date)
+    if kind == "saturday" and not any(r["daytype"] == "saturday" for r in rows):
+        kind = "holiday"
+    return sorted((r for r in rows if r["daytype"] == kind), key=lambda r: r["time"])
+
+
 def next_trains(depart_at, station_id, direction, walk_min, n=3):
     """depart_at に建物を出て walk_min 分歩いたとき、乗れる電車を n 本返す。"""
     arrive = depart_at + dt.timedelta(minutes=walk_min)
-    daytype = "holiday" if depart_at.weekday() >= 5 else "weekday"  # 祝日は未対応
-    times = sorted(r["time"] for r in TRAINS
-                   if r["station"] == station_id and r["direction"] == direction and r["daytype"] == daytype)
-    return arrive, [t for t in times if t >= arrive.time()][:n]
+    if arrive.date() != depart_at.date():
+        return arrive, []  # 日付をまたぐ（終電後）
+    rows = timetable(station_id, direction, depart_at.date())
+    return arrive, [r for r in rows if r["time"] >= arrive.time()][:n]
 
 
 def plan_trains(depart_at, building_id, station_id, direction, n=3):
-    """建物を depart_at に出たときの到着時刻と、乗れる電車 [(時刻, 区分)] を返す。
-    駅での待ちが3分未満の電車は「急げば」とし、その次をおすすめにする。"""
+    """建物を depart_at に出たときの到着時刻と、乗れる電車 [(電車, 区分)] を返す。
+    電車は {"time", "type", "dest"}。駅での待ちが3分未満の電車は「急げば」とし、その次をおすすめにする。"""
     walk = walk_minutes(building_id, station_id)
-    arrive, times = next_trains(depart_at, station_id, direction, walk, n)
-    tight = [(dt.datetime.combine(arrive.date(), t) - arrive).seconds < 180 for t in times]
+    arrive, rows = next_trains(depart_at, station_id, direction, walk, n)
+    tight = [(dt.datetime.combine(arrive.date(), r["time"]) - arrive).seconds < 180 for r in rows]
     best = next((i for i, x in enumerate(tight) if not x), 0)
-    tags = ["おすすめ" if i == best else "急げば間に合う" if tight[i] else "" for i in range(len(times))]
-    return walk, arrive, list(zip(times, tags))
+    tags = ["おすすめ" if i == best else "急げば間に合う" if tight[i] else "" for i in range(len(rows))]
+    return walk, arrive, list(zip(rows, tags))
+
+
+def train_label(r):
+    """「急行 京都行」。普通は種別を省く。"""
+    kind = "" if r.get("type") in ("", "普通", None) else r["type"] + " "
+    return f"{kind}{r['dest']}行" if r.get("dest") else kind.strip()
 
 
 # ---------- 課題・カレンダー ----------

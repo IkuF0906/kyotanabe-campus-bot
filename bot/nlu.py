@@ -6,20 +6,22 @@ import datetime as dt
 WEEKDAY_JA = "月火水木金土日"
 
 # 意図ごとのキーワード。上から順に判定する（先に当たったものを採用）
-TASK_WORDS = r"(レポート|課題|宿題|小テスト|提出物|締切|締め切り|〆切)"
+TASK_WORDS = r"(レポート|課題|宿題|小テスト|提出物|締切|締め切り|〆切|やること)"
 QUESTION = r"(\?|一覧|教えて|確認|見せて|ある？|あるっけ|残って|何がある)"
 
 INTENT_RULES = [
     ("help",       r"(ヘルプ|使い方|何ができる|なにができる)"),
-    ("settings",   r"(設定|変更|いつも).*(駅|方面|興戸|同志社前|京都|奈良|京橋|木津)|(駅|方面).*(設定|変更)"),
-    ("go_home",    r"(帰る|帰り|帰宅|かえる|電車|次の便|駅まで)"),
-    ("where",      r"(どこ|場所|行き方|道案内|地図|マップ|行きたい)"),
-    ("timetable",  r"(授業|時間割|何限|限目|コマ|次は)"),
+    ("settings",   r"(設定|変更|変え|いつも).*(駅|方面|興戸|同志社前|京都|奈良|京橋|木津)"
+                   r"|(駅|方面|興戸|同志社前).*(設定|変更|変え|にして|にする)"),
+    ("go_home",    r"(帰る|帰り|帰ろ|帰宅|かえる|電車|終電|次の便|駅まで)"),
+    ("where",      r"(どこ|場所|行き方|どうやって行|道案内|地図|マップ|行きたい)"),
+    ("timetable",  r"(授業|時間割|何限|限目|コマ|空いて|次は|^次(なに|何|なん))"),
     ("greet",      r"(こんにちは|こんばんは|おはよう|ありがとう|はじめまして)"),
 ]
 
 YES = r"^(はい|うん|ok|おk|お願い|おねがい|それで|いいよ|いいです|大丈夫|そう|y)"
 NO = r"^(いいえ|いや|違う|ちがう|ちゃう|no|n$|だめ)"
+RANGE_WORDS = r"(今日|きょう|明日|あした|今週|来週|再来週|\d+日以内)"
 CANCEL = r"(キャンセル|やめる|やめて|取り消し|もういい)"
 
 
@@ -32,9 +34,23 @@ CLASS_EDIT = r"(追加|登録|入れて|変更|消して|削除|消す|外して
 CLASS_DELETE = r"(消して|削除|消す|外して|取り消)"
 
 
+# 「レポート出た」(出された) と「レポート出した」(提出した) を区別する
+TASK_DONE = r"(終わった|終わらせた|終えた|出した|提出した|提出済|提出完了|完了|済んだ|済ませた|片付いた|やった)"
+
+
 def detect_intent(text):
     if re.search(TASK_WORDS, text):
-        if re.search(QUESTION, text) and not re.search(r"(あった|出た|出され|追加|登録)", text):
+        adding = re.search(r"(あった|出た|出され|追加|登録)", text)
+        asking = re.search(QUESTION + r"|っけ", text)
+        # 「出したっけ？」は確認の質問なので完了にしない。「3限終わった、レポート出た」は登録
+        if re.search(TASK_DONE, text) and not asking and not adding:
+            return "done_task"
+        if re.search(CLASS_DELETE, text):
+            return "delete_task"
+        if asking and not adding:
+            return "list_tasks"
+        # 「来週の課題」「今日の宿題」：期間＋「の」＋課題の語だけなら一覧とみなす（「明日小テスト」は登録）
+        if not adding and re.search(RANGE_WORDS + "の" + TASK_WORDS, text):
             return "list_tasks"
         return "add_task"
     if find_slot(text):
@@ -128,6 +144,25 @@ def find_deadline(text, today):
     return later[-1] if later else None
 
 
+def find_range(text, today):
+    """課題一覧の絞り込み：「今日」「明日」「今週」「来週」「3日以内」→ (開始日, 終了日)。なければ None。"""
+    monday = today - dt.timedelta(days=today.weekday())
+    if re.search(r"再来週", text):
+        return monday + dt.timedelta(days=14), monday + dt.timedelta(days=20)
+    if re.search(r"来週", text):
+        return monday + dt.timedelta(days=7), monday + dt.timedelta(days=13)
+    if re.search(r"今週", text):
+        return today, monday + dt.timedelta(days=6)
+    m = re.search(r"(\d+)日以内", text)
+    if m:
+        return today, today + dt.timedelta(days=int(m.group(1)))
+    if re.search(r"(明日|あした)", text):
+        return today + dt.timedelta(days=1), today + dt.timedelta(days=1)
+    if re.search(r"(今日|きょう)", text):
+        return today, today
+    return None
+
+
 def find_day(text, today):
     """時間割の質問用：「明日の授業」「金曜の時間割」などの対象日。"""
     dates = find_dates(text, today)
@@ -171,3 +206,38 @@ def clean_class_name(text):
 def find_task_kind(text):
     m = re.search(r"(レポート|小テスト|宿題|課題|提出物)", text)
     return m.group(1) if m else "課題"
+
+
+# ---------- 表記ゆれ（ひらがな・カタカナ、誤字） ----------
+
+def to_hira(text):
+    """カタカナをひらがなに、英字を小文字にそろえる（照合用）。"""
+    return "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in text).lower()
+
+
+def _edit_distance(a, b):
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def fuzzy_contains(name, text):
+    """name が text の中に、誤字込みで含まれるか。完全一致は 1.0、誤字込みなら 1未満、なければ 0。
+    3文字以下は完全一致のみ（「知真館」「香知館」のように1文字違いの別名があるため）。
+    4文字は同じ長さで1文字違いまで、5〜6文字は1文字の違い・抜け・余分まで、7文字以上は2文字まで。"""
+    n, t = to_hira(name), to_hira(text)
+    if n in t:
+        return 1.0
+    if len(n) <= 3:
+        return 0.0
+    limit, widths = (1, [len(n)]) if len(n) == 4 else (1, [len(n) - 1, len(n), len(n) + 1])         if len(n) <= 6 else (2, [len(n) - 1, len(n), len(n) + 1])
+    best = None
+    for w in widths:
+        for i in range(0, len(t) - w + 1):
+            d = _edit_distance(n, t[i:i + w])
+            best = d if best is None else min(best, d)
+    return 1 - best / len(n) if best is not None and best <= limit else 0.0

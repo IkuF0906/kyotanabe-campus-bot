@@ -48,6 +48,7 @@ with st.sidebar:
         t = st.time_input("時刻", dt.time(14, 50), step=300, disabled=not fixed)
     now = dt.datetime.combine(d, t) if fixed else dt.datetime.now()
     st.caption(f"現在 {now:%m/%d}（{sv.WEEKDAY_JA[now.weekday()]}）{now:%H:%M}")
+    views.miss_log(bot)
     st.button("保存データを消す", icon=":material/restart_alt:", on_click=reset, type="tertiary",
               help="時間割・課題・設定はこのブラウザに保存されます。初期状態に戻します")
 
