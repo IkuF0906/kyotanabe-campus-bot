@@ -1,0 +1,24 @@
+# 見た目の設定。背景・枠・文字はグレー系、強調色は同志社パープル1色だけ。
+[client]
+toolbarMode = "minimal"   # 右上の Deploy ボタンを隠す
+
+[theme]
+base = "light"
+primaryColor = "#550071"             # 同志社パープル（主要ボタン・選択中・おすすめ便）
+backgroundColor = "#fafafa"
+secondaryBackgroundColor = "#f4f4f5"
+textColor = "#171717"
+linkColor = "#550071"
+borderColor = "#e5e5e5"
+showWidgetBorder = true
+font = "Noto Sans JP:https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500&display=swap, sans-serif"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap, monospace"
+headingFontWeights = 500
+headingFontSizes = ["1.75rem", "1.375rem", "1.125rem"]
+baseRadius = "8px"
+buttonRadius = "8px"
+
+[theme.sidebar]
+backgroundColor = "#f4f4f5"
+secondaryBackgroundColor = "#ffffff"
+borderColor = "#e5e5e5"

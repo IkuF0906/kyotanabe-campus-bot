@@ -1,0 +1,15 @@
+{
+  "_note": "ダミーの時間割。weekday は 0=月 ... 4=金。building は buildings.json の id",
+  "classes": [
+    {"weekday": 0, "period": 2, "name": "知識情報処理特論", "aliases": ["知識情報", "特論"], "building": "jm", "room": "JM301"},
+    {"weekday": 0, "period": 3, "name": "データベース論", "aliases": ["データベース", "DB"], "building": "keidou", "room": "KD201"},
+    {"weekday": 1, "period": 1, "name": "線形代数", "aliases": ["線形", "線代"], "building": "chishin", "room": "TC1-102"},
+    {"weekday": 1, "period": 4, "name": "英語コミュニケーション", "aliases": ["英語", "英コミュ"], "building": "mukoku", "room": "MK304"},
+    {"weekday": 2, "period": 2, "name": "機械学習", "aliases": ["ML"], "building": "jm", "room": "JM201"},
+    {"weekday": 2, "period": 3, "name": "情報倫理", "aliases": ["倫理"], "building": "kouchi", "room": "KC101"},
+    {"weekday": 2, "period": 4, "name": "プログラミング演習", "aliases": ["プロ演", "プログラミング"], "building": "jm", "room": "JM105"},
+    {"weekday": 3, "period": 2, "name": "確率統計", "aliases": ["確率", "統計", "確統"], "building": "chishin", "room": "TC2-201"},
+    {"weekday": 4, "period": 1, "name": "ゼミ", "aliases": ["ゼミナール"], "building": "yuutoku", "room": "YM402"},
+    {"weekday": 4, "period": 3, "name": "ヒューマンインタフェース", "aliases": ["HI", "ヒューマン"], "building": "keidou", "room": "KD305"}
+  ]
+}
