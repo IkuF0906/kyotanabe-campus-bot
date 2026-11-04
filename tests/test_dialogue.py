@@ -1,18 +1,18 @@
-"""画面なしで対話と部品を確認する。実行: python test_dialogue.py（-v で対話の全文を表示）
+"""画面なしで対話と部品を確認する。実行: pytest（-v でシナリオごとの結果を表示）
 
 各シナリオは (発話, 応答に含まれるべき文字列) の並び。期待する文字列が None ならその応答は確認しない。
 """
 
 import datetime as dt
 import json
-import sys
+
+import pytest
 
 from bot import nlu
 from bot import services as sv
 from bot.dialogue import Bot
 
 NOW = dt.datetime(2026, 11, 4, 14, 50)  # 水曜 14:50（3限 情報倫理の直後）
-VERBOSE = "-v" in sys.argv
 
 SCENARIOS = {
     "課題の登録（授業を時間割から推定→確認）": [
@@ -112,66 +112,57 @@ SCENARIOS = {
 }
 
 
-def run_scenarios():
-    failures = 0
-    for title, turns in SCENARIOS.items():
-        bot = Bot()
-        if VERBOSE:
-            print("=" * 60 + f"\n{title}")
-        for utt, expect in turns:
-            r = bot.respond(utt, NOW)
-            if VERBOSE:
-                print(f"> {utt}\n  {r.text}" + (f"\n  [{' / '.join(r.choices)}]" if r.choices else ""))
-            if expect is not None and expect not in r.text:
-                failures += 1
-                print(f"NG {title}: 「{utt}」の応答に「{expect}」がない\n   → {r.text}")
-    return failures
+@pytest.mark.parametrize("title", list(SCENARIOS))
+def test_scenario(title):
+    """1シナリオを通しで話しかけ、各応答に期待する文字列が入っているか。失敗するとそこまでの会話を表示する。"""
+    bot = Bot()
+    log = []
+    for utt, expect in SCENARIOS[title]:
+        r = bot.respond(utt, NOW)
+        log.append(f"> {utt}\n  {r.text}" + (f"\n  [{' / '.join(r.choices)}]" if r.choices else ""))
+        assert expect is None or expect in r.text, f"「{utt}」の応答に「{expect}」がない\n" + "\n".join(log)
 
 
-def check(cond, label):
-    if not cond:
-        print(f"NG {label}")
-    return 0 if cond else 1
+TODAY = NOW.date()
 
 
-def run_units():
-    f = 0
-    today = NOW.date()
-    # 日付・締切
-    f += check(nlu.find_deadline("今日レポートあった、15日まで", today) == dt.date(2026, 11, 15), "締切: 15日まで")
-    f += check(nlu.find_deadline("11/3まで", today) == dt.date(2027, 11, 3), "締切: 過ぎた日付は翌年")
-    f += check(nlu.find_range("今週", today) == (today, dt.date(2026, 11, 8)), "期間: 今週")
-    # 表記ゆれ
-    f += check(nlu.fuzzy_contains("線形代数", "線型代数") > 0, "誤字: 線型代数")
-    f += check(nlu.fuzzy_contains("情報倫理", "情報理論を追加") == 0, "誤字: 情報理論は情報倫理ではない")
-    f += check(nlu.fuzzy_contains("知真館", "知心館") == 0, "誤字: 3文字は完全一致のみ")
-    f += check(nlu.fuzzy_contains("プログラミング演習", "ぷろぐらみんぐ演習") == 1.0, "かな: ひらがな・カタカナ")
-    # ダイヤ
-    f += check(sv.day_type(dt.date(2026, 11, 23)) == "holiday", "ダイヤ: 勤労感謝の日")
-    f += check(sv.day_type(dt.date(2026, 12, 31)) == "holiday", "ダイヤ: 年末")
-    f += check(sv.day_type(dt.date(2026, 11, 7)) == "saturday", "ダイヤ: 土曜")
-    f += check(len(sv.timetable("kodo", "京都方面", dt.date(2026, 11, 7))) > 0, "ダイヤ: 土曜は休日ダイヤで代用")
+@pytest.mark.parametrize(
+    "got, want",
+    [
+        (nlu.find_deadline("今日レポートあった、15日まで", TODAY), dt.date(2026, 11, 15)),
+        (nlu.find_deadline("11/3まで", TODAY), dt.date(2027, 11, 3)),  # 過ぎた日付は翌年
+        (nlu.find_range("今週", TODAY), (TODAY, dt.date(2026, 11, 8))),
+    ],
+    ids=["締切: 15日まで", "締切: 過ぎた日付は翌年", "期間: 今週"],
+)
+def test_dates(got, want):
+    assert got == want
+
+
+def test_fuzzy():
+    assert nlu.fuzzy_contains("線形代数", "線型代数") > 0
+    assert nlu.fuzzy_contains("情報倫理", "情報理論を追加") == 0  # 情報理論は情報倫理ではない
+    assert nlu.fuzzy_contains("知真館", "知心館") == 0  # 3文字は完全一致のみ
+    assert nlu.fuzzy_contains("プログラミング演習", "ぷろぐらみんぐ演習") == 1.0  # ひらがな・カタカナ
+
+
+def test_day_type():
+    assert sv.day_type(dt.date(2026, 11, 23)) == "holiday"  # 勤労感謝の日
+    assert sv.day_type(dt.date(2026, 12, 31)) == "holiday"  # 年末
+    assert sv.day_type(dt.date(2026, 11, 7)) == "saturday"
+    assert len(sv.timetable("kodo", "京都方面", dt.date(2026, 11, 7))) > 0  # 土曜は休日ダイヤで代用
     _, _, trains = sv.plan_trains(dt.datetime(2026, 11, 4, 23, 50), "jm", "kodo", "京都方面")
-    f += check(trains == [], "電車: 終電後は空")
-    # 保存と復元
+    assert trains == []  # 終電後は空
+
+
+def test_save_and_load():
     b = Bot()
     b.add_task("線形代数", "レポート", dt.date(2026, 11, 15))
     b.log_miss("あいうえお", "unknown", NOW, "test")
     c = Bot()
-    f += check(c.load(json.loads(json.dumps(b.dump(), ensure_ascii=False))), "保存: 読み込める")
-    f += check(c.tasks == b.tasks and c.misses == b.misses, "保存: 内容が同じ")
-    c.add_task("x", "課題", today)
-    f += check(c.tasks[-1]["id"] == 2, "保存: 読み込み後の課題番号が続く")
-    f += check(
-        Bot().load(None) is False and Bot().load({"tasks": [{"deadline": "x"}]}) is False, "保存: 壊れた内容は無視"
-    )
-    return f
-
-
-if __name__ == "__main__":
-    failures = run_scenarios() + run_units()
-    n = sum(len(t) for t in SCENARIOS.values())
-    print(
-        f"シナリオ {len(SCENARIOS)}件（{n}発話）と部品の確認: " + ("すべて OK" if not failures else f"NG {failures}件")
-    )
-    sys.exit(1 if failures else 0)
+    assert c.load(json.loads(json.dumps(b.dump(), ensure_ascii=False)))
+    assert c.tasks == b.tasks and c.misses == b.misses
+    c.add_task("x", "課題", TODAY)
+    assert c.tasks[-1]["id"] == 2  # 読み込み後の課題番号が続く
+    assert Bot().load(None) is False
+    assert Bot().load({"tasks": [{"deadline": "x"}]}) is False  # 壊れた内容は無視

@@ -33,16 +33,21 @@
 | 分野 | 技術 | 版 | 何に使っているか |
 |---|---|---|---|
 | 言語 | Python | 3.11（手元 3.11.3、Dev Container 3.11） | すべての処理 |
-| 画面・サーバー | Streamlit | 1.66.1 以上 | チャット画面、各ページ、`st.components.v2` で localStorage への保存 |
-| 地図 | folium（Leaflet） | 0.20.0 以上（Leaflet 1.9.3 を jsDelivr から読み込み） | 建物・駅の地図。地図タイルは OpenStreetMap |
-| 祝日の判定 | jpholiday | 1.0.3 以上 | 祝日・振替休日を休日ダイヤにする |
+| 画面・サーバー | Streamlit | 1.66.1 | チャット画面、各ページ、`st.components.v2` で localStorage への保存 |
+| 地図 | folium（Leaflet） | 0.20.0（Leaflet 1.9.3 を jsDelivr から読み込み） | 建物・駅の地図。地図タイルは OpenStreetMap |
+| 祝日の判定 | jpholiday | 1.0.3 | 祝日・振替休日を休日ダイヤにする |
 | 意図判定 | 標準ライブラリ（`re`・`unicodedata`） | — | キーワード・正規表現、NFKC 正規化、かなの揺れ、編集距離 |
 | フォント | Google Fonts（Noto Sans JP・JetBrains Mono） | — | 本文と時刻の等幅数字（`.streamlit/config.toml`） |
-| テスト・評価 | 自作スクリプト（`test_dialogue.py`・`evaluate.py`） | — | 対話シナリオの確認、意図判定の正解率 |
+| テスト | pytest | 9.2.0 | 対話シナリオ・部品・dev の評価用発話・画面（Streamlit の AppTest）の確認（`tests/`） |
+| 書き方のチェック | ruff | 0.17.3 | 文法の誤り・未使用の名前・import の並びの検出と、書式の統一（設定は `pyproject.toml`） |
+| CI | GitHub Actions | — | push と PR のたびに ruff と pytest を自動で実行し、正解率も表示（`.github/workflows/ci.yml`） |
+| 評価 | 自作スクリプト（`evaluate.py`） | — | 意図判定の正解率と取り違えの集計 |
 | 公開 | Streamlit Community Cloud | — | GitHub の `main` から自動でデプロイ |
 | 開発環境（任意） | Dev Container / GitHub Codespaces | `mcr.microsoft.com/devcontainers/python:1-3.11-bookworm` | ブラウザだけで開発するとき |
 
-LLM・AI の API は使っていません。Docker や CI（GitHub Actions）も使っていません。
+LLM・AI の API は使っていません。Docker も使っていません。
+
+版は `requirements.txt`（アプリ）と `requirements-dev.txt`（テスト・チェック用）で `==` に固定しています。全員の PC と公開版で版がそろうようにするためです。版を上げるときは、ファイルを書き換えてテストが通るのを確かめてから push してください。
 
 ## システムの全体像
 
@@ -96,10 +101,10 @@ LLM・AI の API は使っていません。Docker や CI（GitHub Actions）も
    source .venv/bin/activate
    ```
 
-3. 依存を入れます
+3. 依存を入れます（テスト・チェック用の道具も一緒に入ります）
 
    ```
-   pip install -r requirements.txt
+   pip install -r requirements-dev.txt
    ```
 
 4. 起動します
@@ -122,12 +127,14 @@ GitHub Codespaces で開いた場合は、`.devcontainer/devcontainer.json` の�
 
 | コマンド | 何をするか |
 |---|---|
-| `pip install -r requirements.txt` | 依存を入れる |
+| `pip install -r requirements-dev.txt` | 依存と開発用の道具（pytest・ruff）を入れる。アプリだけなら `requirements.txt` |
 | `streamlit run app.py` | アプリを起動する（http://localhost:8501） |
-| `python test_dialogue.py` | 画面なしで対話シナリオと部品を確認する。`-v` で対話の全文を表示 |
+| `pytest` | すべてのテストを動かす。`-v` でテストごとの結果を表示。失敗したシナリオは、そこまでの会話も表示されます |
+| `ruff check .` | 文法の誤り・未使用の名前などを調べる。`--fix` で直せるものは直す |
+| `ruff format .` | 書式をそろえる（CI は `ruff format --check .` でそろっているかだけを見ます） |
 | `python evaluate.py dev` | 意図判定の正解率と取り違えを表示する。引数は `dev`（既定）／`test`／`all` |
 
-Windows では、日本語の出力で落ちないように `python -X utf8 test_dialogue.py` のように `-X utf8` を付けてください（→ [トラブルシューティング](#トラブルシューティング)）。
+Windows では、日本語の出力で落ちないように `python -X utf8 evaluate.py dev` のように `-X utf8` を付けてください（→ [トラブルシューティング](#トラブルシューティング)）。
 
 サイドバーの「デモ用の時刻」で、アプリの中の時刻を変えられます（デモで「4限の後」などを再現するときに使います）。
 
@@ -150,9 +157,15 @@ kyotanabe_bot/
 │   ├── trains.csv       電車の時刻表（ダミー）
 │   └── eval/
 │       └── utterances.csv  意図判定の評価用発話（dev / test）
-├── test_dialogue.py     対話シナリオと部品の確認
+├── tests/
+│   ├── test_dialogue.py  対話シナリオと部品の確認
+│   ├── test_eval.py      dev の評価用発話がすべて正しく判定されるか
+│   └── test_app.py       画面を開いて話しかけても例外が出ないか（AppTest）
 ├── evaluate.py          意図判定の正解率・取り違えの集計
-├── requirements.txt     依存
+├── requirements.txt     アプリの依存（版を固定。Streamlit Community Cloud もこれを読む）
+├── requirements-dev.txt 開発用の依存（pytest・ruff）
+├── pyproject.toml       ruff と pytest の設定
+├── .github/workflows/ci.yml  CI（ruff と pytest を自動で実行）
 ├── .streamlit/config.toml  テーマ（色・フォント）
 └── .devcontainer/       Dev Container / Codespaces の設定
 ```
@@ -229,7 +242,7 @@ test で残っている間違い（`python evaluate.py test` で確認できま�
 2. サイドバーの「通じなかった発話」から CSV を書き出し、「正解の意図」の列を埋めます
 3. 埋めた発話を `data/eval/utterances.csv` に `dev` として追加します
 4. `python evaluate.py dev` で間違いを確かめ、`bot/nlu.py` のルールを直します
-5. `python test_dialogue.py` で他の会話を壊していないか確かめ、最後に `python evaluate.py test` で評価します
+5. `pytest` で他の会話を壊していないか確かめ、最後に `python evaluate.py test` で評価します
 
 ## 見た目の方針
 
@@ -249,8 +262,10 @@ test で残っている間違い（`python evaluate.py test` で確認できま�
 
 | 症状 | 原因 | 直し方 |
 |---|---|---|
-| Windows で `test_dialogue.py` などの出力が文字化けする、または `UnicodeEncodeError` で落ちる | Python の出力の文字コードが UTF-8 でなく（cp932）、日本語や記号をうまく出せない | `python -X utf8 test_dialogue.py` のように `-X utf8` を付ける |
-| 起動時に `ModuleNotFoundError: No module named 'jpholiday'` | 祝日判定で `jpholiday` を足す前の環境のまま | `pip install -r requirements.txt` をやり直す |
+| Windows で `evaluate.py` などの出力が文字化けする、または `UnicodeEncodeError` で落ちる | Python の出力の文字コードが UTF-8 でなく（cp932）、日本語や記号をうまく出せない | `python -X utf8 evaluate.py dev` のように `-X utf8` を付ける |
+| Windows で `pip install -r requirements.txt` が `UnicodeDecodeError: 'cp932' codec can't decode` で落ちる | 古い pip が requirements の日本語（ASCII 以外の文字）を cp932 として読もうとする | requirements のコメントは英語（ASCII）だけで書く。`python -m pip install -U pip` で pip を上げても直ります |
+| CI（GitHub Actions）が `ruff format --check` で失敗する | 書式がそろっていないファイルがある | 手元で `ruff format .` を実行してから push する |
+| 起動時に `ModuleNotFoundError: No module named 'jpholiday'`（や `pytest`・`ruff` が見つからない） | 依存を足す前の環境のまま | `pip install -r requirements-dev.txt` をやり直す |
 | 時間割や課題が別の端末・別のブラウザに出ない | 保存先がそのブラウザの localStorage だけのため（仕様） | 同じブラウザで使う。シークレットウィンドウでは閉じると消えます |
 | フォントが標準のものになる／地図が出ない | Google Fonts・Leaflet（jsDelivr）・OpenStreetMap をネットから読むため、オフラインだと読めない | ネットにつながった状態で開く |
 | push したのに公開版が変わらない／エラーになる | Streamlit Community Cloud の再デプロイ中か、依存の導入に失敗している | 少し待ってから再読み込みする。直らなければ Streamlit Community Cloud の管理画面でログを見る |

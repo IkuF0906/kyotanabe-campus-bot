@@ -1,0 +1,29 @@
+# push と PR のたびに、書き方のチェックとテストを自動で走らせる
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: 書き方のチェック（ruff）
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: テスト（pytest）
+        run: pytest -v
+      - name: 意図判定の正解率（参考。失敗にはしない）
+        run: |
+          python evaluate.py dev
+          python evaluate.py test
