@@ -86,6 +86,23 @@ class Bot:
     def remove_class(self, weekday, period):
         self.classes = [c for c in self.classes if not (c["weekday"] == weekday and c["period"] == period)]
 
+    # ---------- 保存と復元（画面側がブラウザに保存する） ----------
+
+    def dump(self):
+        tasks = [{**t, "deadline": t["deadline"].isoformat()} for t in self.tasks]
+        return {"version": 1, "classes": self.classes, "tasks": tasks, "settings": self.settings}
+
+    def load(self, data):
+        """dump() の内容を読み込む。形式が合わなければ何もしない（False を返す）。"""
+        try:
+            tasks = [{**t, "deadline": dt.date.fromisoformat(t["deadline"])} for t in data["tasks"]]
+            classes, settings = list(data["classes"]), dict(data["settings"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        self.classes, self.tasks, self.settings = classes, tasks, settings
+        self._next_id = max((t["id"] for t in tasks), default=0)
+        return True
+
     def open_tasks(self, today):
         return sorted((t for t in self.tasks if not t["done"] and t["deadline"] >= today),
                       key=lambda t: t["deadline"])

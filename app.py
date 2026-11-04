@@ -3,6 +3,7 @@ import datetime as dt
 
 import streamlit as st
 
+import storage
 import views
 from bot import services as sv
 from bot.dialogue import Bot
@@ -18,6 +19,12 @@ st.html("""<style>
 if "bot" not in st.session_state:
     st.session_state.bot = Bot()
 bot = st.session_state.bot
+
+
+def reset():
+    # 時間割・課題・設定を初期状態に戻す（直後の保存でブラウザの内容も上書きされる）
+    st.session_state.bot = Bot()
+    st.session_state.pop("history", None)
 
 
 def page(func, title, icon, default=False):
@@ -41,5 +48,9 @@ with st.sidebar:
         t = st.time_input("時刻", dt.time(14, 50), step=300, disabled=not fixed)
     now = dt.datetime.combine(d, t) if fixed else dt.datetime.now()
     st.caption(f"現在 {now:%m/%d}（{sv.WEEKDAY_JA[now.weekday()]}）{now:%H:%M}")
+    st.button("保存データを消す", icon=":material/restart_alt:", on_click=reset, type="tertiary",
+              help="時間割・課題・設定はこのブラウザに保存されます。初期状態に戻します")
 
 nav.run()
+with st.sidebar:
+    storage.sync(bot)
