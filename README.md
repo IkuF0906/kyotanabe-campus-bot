@@ -114,7 +114,7 @@ test で残っている間違い（`python evaluate.py test` で確認）：「�
 |---|---|
 | `data/periods.json` | 時限（1〜7限）。同志社大学 京田辺校地の講時（2026年度の学部時間割表で確認） |
 | `data/trains.csv` | **ダミー**。形式は `station,direction,daytype,time,type,dest`（daytype は weekday / saturday / holiday。saturday が無い駅は holiday を使う） |
-| `data/places.json` | 座標は OpenStreetMap。徒歩分は、興戸が「正門→興戸 15分（メンバー実測・速め）＋建物→正門の推定」、同志社前は直線距離からの**推定値** |
+| `data/places.json` | 座標は OpenStreetMap。徒歩分は、興戸が「正門→興戸 15分（メンバー実測・速め）＋建物→正門の推定」、同志社前は直線距離からの**推定値**。電車の計算では、どちらにも余裕として2分足す（`services.WALK_MARGIN`） |
 | `data/timetable.json` | 初期の時間割（**ダミー**） |
 
 ダイヤは日付から判定する：日曜・祝日（振替休日を含む。`jpholiday`）・12/30〜1/3 は休日ダイヤ、土曜は土曜ダイヤ（無ければ休日ダイヤ）。

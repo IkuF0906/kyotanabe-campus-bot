@@ -145,9 +145,12 @@ def find_direction(text, station_id):
     return None
 
 
+WALK_MARGIN = 2  # places.json の徒歩分は速めに歩いた値なので、余裕を足す
+
+
 def walk_minutes(building_id, station_id, default=12):
     b = BUILDINGS.get(building_id)
-    return b["walk"][station_id] if b else default
+    return (b["walk"][station_id] if b else default) + WALK_MARGIN
 
 
 YEAR_END = {(12, 30), (12, 31), (1, 1), (1, 2), (1, 3)}  # 鉄道各社は年末年始を休日ダイヤで運転する
